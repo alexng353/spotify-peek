@@ -1,0 +1,159 @@
+/* spotify-peek — catppuccin mocha, matched to ~/.config/waybar/style.css.
+ *
+ * Edited live: the binary prefers this file on disk over its compiled-in copy,
+ * so a restart of spotify-peek is enough to pick up changes. */
+
+* {
+  font-family: Lexend;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* The card paints its own background so the corners can be rounded. */
+window.peek-popup {
+  background-color: transparent;
+}
+
+/* The hover strip must stay invisible, but a fully transparent window gives GTK
+ * nothing to paint, so it never commits a buffer — the compositor then leaves
+ * the surface unconfigured and it receives no pointer events at all. One part in
+ * 250 of alpha is enough to force the commit and imperceptible on screen. */
+window.peek-trigger {
+  background-color: rgba(0, 0, 0, 0.004);
+}
+
+.card {
+  background-color: #181825;
+  border: 1px solid #313244;
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  padding: 14px 16px 12px 16px;
+}
+
+.title {
+  color: #cdd6f4;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.artist {
+  color: #9399b2;
+}
+
+.time {
+  color: #6c7086;
+  font-size: 12px;
+  font-feature-settings: "tnum";
+}
+
+/* GTK draws a progress bar as trough + progress; both need sizing or the bar
+ * collapses to the theme's hairline. */
+.seek trough {
+  min-height: 5px;
+  border-radius: 3px;
+  background-color: #313244;
+}
+
+.seek progress {
+  min-height: 5px;
+  border-radius: 3px;
+  background-color: #cba6f7;
+}
+
+.control {
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 15px;
+  background: transparent;
+  background-image: none;
+  box-shadow: none;
+  color: #a6adc8;
+}
+
+.control:hover {
+  background-color: #313244;
+  color: #cdd6f4;
+}
+
+.control.primary {
+  min-width: 34px;
+  min-height: 34px;
+  border-radius: 17px;
+  background-color: #cba6f7;
+  color: #181825;
+}
+
+.control.primary:hover {
+  background-color: #d8bbfa;
+  color: #181825;
+}
+
+/* Liked toggle. Dim while the library check is still out, gold once saved. */
+.control.like {
+  min-width: 26px;
+  min-height: 26px;
+  border-radius: 13px;
+  color: #6c7086;
+}
+
+.control.like.unknown {
+  opacity: 0.4;
+}
+
+.control.like.liked {
+  color: #f9e2af;
+}
+
+.control.like.liked:hover {
+  background-color: #313244;
+  color: #f9e2af;
+}
+
+/* Click-to-copy target: the art and the title/artist block. */
+.identity:hover .title {
+  color: #cba6f7;
+}
+
+.heading {
+  color: #6c7086;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  /* Doubles as the divider above the queue. */
+  border-top: 1px solid #313244;
+  padding-top: 10px;
+}
+
+.queue-row {
+  color: #a6adc8;
+  font-size: 13px;
+}
+
+.idle {
+  color: #6c7086;
+  padding: 6px 0;
+}
+
+/* Keybind legend: mirrors the media binds in hyprland.lua. */
+.legend {
+  border-top: 1px solid #313244;
+  padding-top: 9px;
+}
+
+.key {
+  background-color: #232336;
+  border: 1px solid #313244;
+  border-radius: 4px;
+  color: #a6adc8;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+}
+
+.key-what {
+  color: #6c7086;
+  font-size: 11px;
+  padding-left: 4px;
+}
