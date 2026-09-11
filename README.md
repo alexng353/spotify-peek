@@ -1,169 +1,58 @@
 # spotify-peek
 
-A Spotify card that drops down when the cursor touches the top edge of the
-screen. Shows the current track, a click-to-seek progress bar, transport
-controls, a liked toggle, what's up next, and a legend of the media keybinds
-from `hyprland.lua`.
+Your Spotify controls, one hover away. Move the pointer to the top center of your screen to reveal a compact card; move away to hide it.
 
-Launched from `hyprland.lua` (`hl.on("hyprland.start", …)`), binary installed to
-`~/.local/bin/spotify-peek`.
+<p align="center">
+  <img src="docs/images/spotify-peek.png" alt="Spotify Peek popup with album artwork, playback controls, recent and upcoming tracks, and keyboard hints" width="460">
+</p>
 
-## Shape
+## What it does
 
-Two layer-shell surfaces, both on the `overlay` layer so they sit above waybar:
+- Shows album artwork, the current track, and its artists.
+- Plays, pauses, skips, and seeks with a clickable progress bar.
+- Shows the previous track and what's coming next.
+- Saves or removes the current track from your liked songs.
+- Copies a clean Spotify link when you click the artwork or track title.
 
-- **the strip** — 500x2, pinned to the top edge, permanently mapped, exists only
-  to notice the cursor. 2px so the remaining 33px of waybar keeps its own clicks.
-- **the card** — unmapped whenever it isn't shown, so it captures no input and
-  reserves no space.
+Works with **Spotify Desktop** and **[Fastpotify](https://github.com/crmne/fastpotify)**. The card prefers a playing client, then a paused client with a loaded track; Fastpotify wins ties. Playback controls follow the client shown on the card.
 
-All work is gated behind visibility. Closed, there are no timers, no D-Bus
-subscriptions, no HTTP and no subprocesses; the process sleeps on the Wayland
-socket. Hover for 120ms and it reads MPRIS in one `GetAll`, starts a 1s tick, and
-kicks the Web API lookups. On leave it cancels everything after a 200ms grace.
+Built in Rust with GTK4 and layer-shell for Linux Wayland desktops. A narrow trigger sits at the top edge; the card reserves no screen space. Refresh timers and API lookups run while the card is visible.
 
-### What it costs
+## Install
 
-Idle (launched, never hovered): **RSS 89 MB, PSS 46 MB, 0.00% CPU** — zero CPU
-ticks over a 15s window. Open, the 1s tick costs ~0.13%.
-
-RSS overstates it badly. The split:
-
-| | |
-| --- | --- |
-| private (genuinely ours) | 23 MB — 13 MB dirty heap, 10 MB private clean |
-| shared read-only library pages | 66 MB |
-
-and the largest mappings are not ours at all:
-
-```
-25.5 MB  libnvidia-gpucomp.so
-17.8 MB  libnvidia-glcore.so
- 9.7 MB  libgtk-4.so
- 3.8 MB  [heap]
- 1.8 MB  spotify-peek itself
-```
-
-The 43 MB of nvidia GL driver is mapped by GDK during Wayland display init and
-**cannot be dropped** — `GDK_DISABLE=gl`, `gl,vulkan,dmabuf` all leave the same
-29 mappings in place. Choosing the renderer is what actually moves the needle:
-
-| renderer | RSS | PSS |
-| --- | --- | --- |
-| `GSK_RENDERER=cairo` (what we set) | 89 MB | **46 MB** |
-| `GSK_RENDERER=ngl` | 258 MB | 167 MB |
-
-Getting below ~20 MB would mean dropping GTK for raw Wayland plus hand-rolled
-text layout and input handling. Not worth it for a card this size.
-
-**Opening the card costs ~13 MB that is never given back** (89 → 101.5 MB), and
-that's expected: GTK allocates the card's render buffers, glyph cache and icon
-textures on first draw and keeps them, which is what makes later opens instant.
-
-What matters is that it stops there. `--debug-cycle N` exists to prove it:
-
-```
-$ spotify-peek --debug-cycle 60
-baseline (never opened): 88.3 MB
-after   5 open/close cycles: 101.4 MB
-after  59 open/close cycles: 101.6 MB     # flat
-```
-
-Before the pooled agent and `malloc_trim`, the same run crept from 102.7 MB to
-108.6 MB over the first ~35 cycles — a fresh TLS agent per lookup plus the
-allocator keeping every high-water mark. Both fixed; if that creep ever comes
-back, this is the tool that shows it.
-
-| Source | Used for |
-| --- | --- |
-| MPRIS (`zbus`) | title, primary artist, art URL, position, length, status, transport, seek |
-| Web API (`ureq`) | up-next queue, full artist list, liked status, like toggle |
-
-Auth rides on the OAuth app **`spotlike`** already has registered: its client
-credentials (`~/.config/spotlike/env`) and refresh token
-(`~/.local/share/spotlike/token.json`) are read but never written back. Our own
-access token is cached separately in `~/.cache/spotify-peek/token.json`, so the
-two tools can't clobber each other. Rotating spotlike's credentials breaks
-up-next, the artist list and the liked toggle — everything MPRIS can't answer.
-
-## Working on it
+You need Rust, GTK **4.12 or newer**, gtk4-layer-shell, pkg-config, and their development libraries. Run it in a Wayland compositor that supports layer-shell, such as Hyprland.
 
 ```sh
-cargo test                       # queue/artist parsing
-cargo clippy --all-targets       # kept warning-free
-cargo build --release && install -Dm755 target/release/spotify-peek ~/.local/bin/
-pkill -x spotify-peek && (spotify-peek &)
+git clone https://github.com/alexng353/spotify-peek.git
+cd spotify-peek
+cargo build --release --locked
+install -Dm755 target/release/spotify-peek ~/.local/bin/spotify-peek
 ```
 
-`style.css` is read from this directory at startup in preference to the copy
-compiled into the binary, so restyling only needs a restart, not a rebuild.
+Launch `~/.local/bin/spotify-peek`, then hover over the top center of the screen. Add the same command to your compositor's startup configuration to launch it at login.
 
-Two debugging aids:
+## Spotify account setup
 
-- `--debug-open` opens the card at startup and logs surface geometry, for
-  checking layout without a real hover (there is no cursor-warp dispatcher in
-  Hyprland's Lua API, so hovering can't be scripted).
-- `SPOTIFY_PEEK_DEBUG=1` traces the hover state machine and copied URLs.
-- `--debug-cycle N` opens and closes the card N times, reporting resident memory
-  after each, to tell a plateau apart from a leak.
+Track details and playback controls use the player's local MPRIS interface. Queue, listening history, full artist lists, and liked-song controls use Spotify's Web API.
 
-Check the real geometry with `hyprctl layers`; the strip should read
-`xywh: 1030 0 500 2`.
+For those API features, peek reuses credentials from [spotlike](https://github.com/alexng353/spotlike):
 
-## Things that bit, and will again
+1. Configure and authorize spotlike with your Spotify application.
+2. Put `RSPOTIFY_CLIENT_ID` and `RSPOTIFY_CLIENT_SECRET` in `~/.config/spotlike/env` as `KEY=VALUE` lines.
+3. Keep spotlike's authorized token at `~/.local/share/spotlike/token.json`.
 
-- **`set_exclusive_zone(-1)`, not `0`.** Zero means "reserve nothing but stay
-  clear of everyone else's reserved space", which parks the surface *below*
-  waybar's 35px zone. -1 means "reserve nothing and ignore theirs".
-- **Layer surfaces need `set_default_size`.** Without it GTK falls back to
-  200x200 no matter what the content requests.
-- **A fully transparent window never commits a buffer**, so the compositor
-  leaves the surface unconfigured and it receives *no pointer events at all*.
-  The strip carries `rgba(0,0,0,0.004)` to force the commit.
-- **The revealer crossfades rather than slides.** A slide re-measures the surface
-  every frame, so the compositor resizes the layer surface throughout the
-  animation.
-- **`GSK_RENDERER=cairo` is set in-process.** GTK's default GL renderer maps
-  ~90 MB of nvidia driver state to draw a 460px card; cairo halves the process's
-  memory share and costs nothing at this size. Override by setting the variable.
-- **Spotify's MPRIS reports only the primary artist** — "Forever" arrives over
-  D-Bus as just "Drake". The full list comes from the `currently_playing` object
-  in the queue response, matched by track id so a stale list is never attributed
-  to the wrong song, and no extra request is needed.
-- **`mpris:trackid` is a string, not the object path** the spec calls for, and
-  `mpris:length` is a uint64 rather than an int64. Both are re-typed on the way
-  in.
-- **The queue endpoint needs an active playback session.** Paused with no active
-  device, it returns `currently_playing: null` and an empty queue — up-next
-  showing `—` is that state, not a bug.
+Peek reads those files and keeps its own access-token cache in `~/.cache/spotify-peek/`. Credentials and tokens belong outside the repository.
 
-## The sliding window
+The card's key hints describe the author's Hyprland bindings; peek does not register global shortcuts. Its click-to-copy action works independently of the `Super+Shift+C` binding to `spotlike copy`.
 
-The cache spans `[prev, current, next … next+3]` — one row more than the three
-shown — so a skip in either direction redraws correctly *before* the refetch
-lands, and never blanks:
+## Development
 
-- **forward:** the queue head becomes current; the track we left becomes `prev`.
-- **backward:** the track we left is pushed onto the front of the queue; `prev`
-  becomes unknown and is refilled on the next lookup round.
-- **any other jump:** the window is left alone and the refetch replaces it.
+```sh
+cargo test --locked                 # includes MPRIS tests; needs dbus-daemon
+cargo clippy --locked --all-targets
+cargo fmt --check
+```
 
-Shifting is driven by the observed track id, never by which button was pressed.
-That matters because Spotify's `Previous` restarts the current track when you're
-a few seconds in rather than moving back — no id change, so nothing shifts.
-`slide_window` is pure and covered by tests for each of those cases.
+Use `--debug-open` to show the card at launch, `SPOTIFY_PEEK_DEBUG=1` for hover and copy diagnostics, and `--debug-cycle N` to exercise repeated opens and closes.
 
-`prev` is almost always free, since it's whatever we just moved off.
-`recently-played` is only called when local history can't supply it — after a
-cold open, or right after a backward skip — and its answer is discarded if it
-names the track already playing, which happens once a track has played far
-enough to enter the history.
-
-## Deliberate choices
-
-- Track changes never blank the UI. Art and queue rows hold their previous value
-  until real data arrives.
-- Web API lookups are debounced 350ms and read the generation at fire time, so
-  holding skip costs one round of requests for wherever you landed.
-- Async results are stamped with a generation and dropped if the track moved on.
-- Copy produces a bare `open.spotify.com/track/<id>` with no `?si=` parameter.
+See [development notes](docs/development.md) for the layer-shell design, queue caching, styling, and historical memory measurements.
